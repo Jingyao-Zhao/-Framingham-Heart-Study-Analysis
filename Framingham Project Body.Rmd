@@ -1,0 +1,492 @@
+
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print = "75")
+knitr::opts_chunk$set(
+  echo = FALSE, cache = FALSE, prompt = FALSE,
+  tidy = FALSE, comment = NA,
+  message = FALSE, warning = FALSE
+)
+opts_knit$set(width = 75)
+```
+
+# Introdution
+
+The Framingham Study is a "population-based, observational cohort study" started in 1948 by a federal public health agency.  The goal has been to investigate cardiovascular disease. This data is a small subset of the larger study. The full data is complex and includes genetic and imaging results as well as the demographics and clinical data included in the subset. The full data has been instrumental in furthering understanding of cardiac conditions and outcomes. 
+
+Cardiac conditions are numerous and diverse. This data primary looks at a subset of cardiac conditions regarding coronary artery, coronary heart disease sequalae, and cerebral vascular disease.  The coronary arteries are the arteries that supply the heart muscle with blood and oxygen to allow it to work to pump oxygenated blood throughout the body.  There are many reasons for coronary vascular, including most prominently a build up of plaque.  When blood flow is impeded in the artery, it causes ischemia (a lack of oxygen) which leads to angina (cardiac chest pain) and eventually a Myocardial Infarction (MI), a heart attack.  Hypertension is a risk factor for coronary heart disease.    Hypertension is elevate blood pressure. Many of the factors that cause affect the coronary arteries can also effect the cerebral arteries, arteries of the brain, and diseases of these can lead to strokes.   
+
+
+# Sources
+* https://www.bmc.org/stroke-and-cerebrovascular-center/research/framingham-study
+
+# Research Questions 
+
+Our first research question was to properly understand the data set.  Our original dataframe had 11,627 records with 39 variables.  First we wanted to understand what data was there, what data was missing, and what the distributions were. Therefore, we spent alot of time "cleaning" the data. 
+Also, because we also want to know what factors in Framingham study could increase risk of getting CHD, we used binary logistic regression model and binomial logistic regression to show the correlation between potential risk factors and CHD. 
+
+# Cleaning the Data
+## Data Source and Description
+First we had to set up the data in our R Studio.  We downloaded the data from the dropbox site for the class and set it into a data frame.With this we loaded some libraries that would help us clean and evaluate the data.   
+
+```{r import, echo=TRUE, eval=TRUE}
+rm(list=ls())
+library(plyr)
+library(dplyr)
+library(lubridate)
+FRAMINGHAM.DL <- read.csv("https://www.dropbox.com/s/oxnn4uoj8lqujwm/frmgham2.csv?dl=1")
+FRMGHAM.PT <- FRAMINGHAM.DL
+```
+
+
+## Data Exploration and Munging  
+
+Looking at the data initially, it appears that patients were followed for at least 3 periods, so many of the 11,000 + records were duplicated, and triplicated.  Outcome data for each line was final outcome data and this was repeated for each period the patient was present so it was not unique for each visit.  The prevalent disease columns however were unique for each visit.  
+
+```{r head, echo=TRUE, eval=TRUE}
+head(FRMGHAM.PT)
+```
+
+Many of the data items were factor variables, so we converted those variables to factors.  This included risk factors like sex, smoking history, education, prevalence of disease (diabetes, hypertension, CHD), use of medication, as well as outcome occurrences such as CHD events, strokes and death.  
+```{r factor, echo=TRUE, eval=TRUE}
+#Setting Factor Variables
+FRMGHAM.PT <- mutate(FRMGHAM.PT, educ= as.factor(educ),DIABETES=as.factor(DIABETES), 
+               SEX= as.factor(SEX), CURSMOKE=as.factor(CURSMOKE), BPMEDS=as.factor(BPMEDS),
+               PREVCHD = as.factor(PREVCHD), PREVAP = as.factor(PREVAP), 
+               PREVMI = as.factor(PREVMI), PREVSTRK = as.factor(PREVSTRK), 
+               PREVHYP = as.factor(PREVHYP), PERIOD = as.factor(PERIOD), 
+               DEATH = as.factor(DEATH), ANGINA = as.factor(ANGINA), 
+               HOSPMI = as.factor(HOSPMI), MI_FCHD = as.factor(MI_FCHD), 
+               ANYCHD = as.factor(ANYCHD), STROKE = as.factor(STROKE), 
+               CVD = as.factor(CVD), HYPERTEN = as.factor(HYPERTEN))
+```
+
+The last few column were the dates when a certain event happened (like heart attack or chest pain) but also included was the last date the patient had contact with the study.  Given we had a factor variable if the event occurred or not, we created new columns that held the time the event occurred only if the event occurred.   We then deleted the original time columns. 
+
+```{r outcomes, echo=TRUE, eval=TRUE}
+FRMGHAM.PT$TIMEMIFC_OCCURRED <- ifelse(FRMGHAM.PT$MI_FCHD == 1, FRMGHAM.PT$TIMEMIFC, NA)
+FRMGHAM.PT$TIMEMI_OCCURRED <- ifelse(FRMGHAM.PT$HOSPMI == 1, FRMGHAM.PT$TIMEMI, NA)
+FRMGHAM.PT$TIMECHD_OCCURRED <- ifelse(FRMGHAM.PT$ANYCHD == 1, FRMGHAM.PT$TIMECHD, NA)
+FRMGHAM.PT$TIMESTRK_OCCURRED <- ifelse(FRMGHAM.PT$STROKE == 1, FRMGHAM.PT$TIMESTRK, NA)
+FRMGHAM.PT$TIMECVD_OCCURRED <- ifelse(FRMGHAM.PT$CVD == 1, FRMGHAM.PT$TIMECVD, NA)
+FRMGHAM.PT$TIMEDEATH_OCCURRED <- ifelse(FRMGHAM.PT$DEATH == 1, FRMGHAM.PT$TIMEDTH, NA)
+FRMGHAM.PT$TIMEHYP_OCCURRED <- ifelse(FRMGHAM.PT$HYPERTEN == 1, FRMGHAM.PT$TIMEHYP, NA)
+FRMGHAM.PT$TIMEAP_OCCURRED <- ifelse(FRMGHAM.PT$ANGINA == 1, FRMGHAM.PT$TIMEAP,NA)
+
+#Removing the original columns that had last seen dates
+FRMGHAM.PT <- FRMGHAM.PT[-c(32:39)]
+
+#Creating a data frame with just numerically coded data.  
+FRMGHAM.PT.CODED <- FRMGHAM.PT
+```
+
+For the numerically coded values, we wanted to be able to interpret them with English text not using a key, so we created labels for all the factor data
+
+```{r labels, echo=TRUE, eval=TRUE}
+#Setting Factor Level Names
+levels(FRMGHAM.PT$SEX) <- c('Men', 'Women')
+levels(FRMGHAM.PT$PERIOD) <- c('Period 1', 'Period 2','Period 3')
+levels(FRMGHAM.PT$BPMEDS) <- c('No BP Meds', 'Currently Using BP Meds')
+levels(FRMGHAM.PT$CURSMOKE) <- c('NonSmoker', 'Currently Smoker')
+levels(FRMGHAM.PT$educ) <- c('0-11 years', 'High School Diploma, GED','Some College, Vocational School', 'College (BS, BA) degree or more')
+levels(FRMGHAM.PT$DIABETES) <- c('None', 'Diabetes History')
+levels(FRMGHAM.PT$PREVHYP) <- c('None', 'HTN History')
+levels(FRMGHAM.PT$PREVAP) <- c('None', 'Angina History')
+levels(FRMGHAM.PT$PREVCHD) <- c('None', 'Coronary HD History')
+levels(FRMGHAM.PT$PREVMI) <- c('None', 'MI History')
+levels(FRMGHAM.PT$PREVSTRK) <- c('None', 'Stroke History')
+levels(FRMGHAM.PT$DEATH) <- c('None', 'DEATH OCCURRED')
+levels(FRMGHAM.PT$ANGINA) <- c('None', 'ANGINA OCCURRED')
+levels(FRMGHAM.PT$HOSPMI) <- c('None', 'MI OCCURRED')
+levels(FRMGHAM.PT$MI_FCHD) <- c('None', 'MI OR FATAL CHD OCCURED')
+levels(FRMGHAM.PT$ANYCHD) <- c('None', 'CHD OCCURRED')
+levels(FRMGHAM.PT$STROKE) <- c('None', 'STROKE OCCURRED')
+levels(FRMGHAM.PT$CVD) <- c('None', 'CVD OCCURRED')
+levels(FRMGHAM.PT$HYPERTEN) <- c('None', 'HTN OCCURRED')
+```
+
+
+Now that we had a data frame with data we could read, we wanted to understand the outcomes better. We knew that many of the records were repeat patients so we had to split them up into different periods.  We separated the data frame into 3 different data frames by the period. We then dropped repeated columns that didn't change over the evaluation period or weren't measured in that period.  The columns we dropped were:
+
+- sex (from data frames 2 and 3)
+- education (from data frames 2 and 3)
+- period labels (from all data frames)
+- time (from data from 1 as it was always 0)
+- HDL and LDL (from data frames 1 and 2) as these were only measured at the 3rd period
+- outcome data (from data frames 2 and 3) as these were the same for all 3 periods 
+
+  
+We then relabeled the columns except for RANDID (patient identifier in order to eventually join) with the period the new data came from.
+
+```{r dividing, echo=TRUE, eval=TRUE}
+#splitting the data into dataframes and removing the uncessary columns.
+FRMGHAM.PT_P.1 <- FRMGHAM.PT[FRMGHAM.PT$PERIOD =="Period 1",] %>% .[-c(20:23)] 
+FRMGHAM.PT_P.2 <- FRMGHAM.PT[FRMGHAM.PT$PERIOD =="Period 2",] %>% .[-c(2,14,21:47)]
+FRMGHAM.PT_P.3 <- FRMGHAM.PT[FRMGHAM.PT$PERIOD =="Period 3",] %>% .[-c(2,14,21,24:47)]
+
+#renaming the columns 
+colnames(FRMGHAM.PT_P.2) <- paste("P2", colnames(FRMGHAM.PT_P.2), sep = "_")
+names(FRMGHAM.PT_P.2)[1] <- 'RANDID'
+colnames(FRMGHAM.PT_P.3) <- paste("P3", colnames(FRMGHAM.PT_P.3), sep = "_")
+names(FRMGHAM.PT_P.3)[1] <- 'RANDID'
+
+```
+
+
+Finally we joined the data to create 2 finalized and completed data frames. The first data frame was created by outer joining the first period to the second period and then again outer joining that to the third period to create a dataframe with all possible patients.  
+
+
+```{r outer join, echo=TRUE, eval=TRUE}
+#outerjoins
+FRAMINGHAM.CLEAN <- merge(FRMGHAM.PT_P.1, FRMGHAM.PT_P.2, by = "RANDID", all = TRUE) %>% merge(., FRMGHAM.PT_P.3, by = "RANDID", all = TRUE)
+```
+
+The second option was created by using inner joins so it is just all the patients that presented for all 3 periods.
+
+```{r inner join, echo=TRUE, eval=TRUE}
+#inner joins
+FRAMINGHAM.CLEAN.ALL3 <- merge(FRMGHAM.PT_P.1, FRMGHAM.PT_P.2, by = "RANDID") %>% merge(., FRMGHAM.PT_P.3, by = "RANDID")
+```
+
+## Variable List
+
+This left us with 71 different variables.  The summary of the variables is below:
+
+```{r variables, echo=TRUE, eval=TRUE}
+str(FRAMINGHAM.CLEAN)
+```
+
+### Period 1 Visit
+
+ - RANDID            : Unique Identifier
+ - SEX               : Sex
+ - TOTCHOL           : Serum Total Cholesterol (mg/dl)
+ - AGE               : Age (years)
+ - SYSBP             : Mean Systolic of Last 2 Measurements (mmHg)
+ - DIABP             : Mean Diastolic of Last 2 Measurements (mmHg)
+ - CURSMOKE          : Current Cigarette Smoker 
+ - CIGPDAY           : # of Cigarettes per Day 
+ - BMI               : BMI (kg/m2)
+ - DIABETES          : Diabetic
+ - BPMEDS            : On Blood Pressure Medications at Exam
+ - HEARTRTE          : Heart Rate (beats/min)
+ - GLUCOSE           : Random serum glucose (mg/dl)
+ - educ              : Max. Attained Education
+ - PREVCHD           : Coronary Heart Disease Present / Not Present
+ - PREVAP            : Angina Present / Not Present
+ - PREVMI            : Myocardial Infarction Hx Present / Not Present
+ - PREVSTRK          : Stroke Hx Present / Not Present
+ - PREVHYP           : Hypertension Present / Not Present
+ - DEATH             : Death Occurred / Did Not Occurr
+ - ANGINA            : Angina Pectoris Occurred / Did Not Occur
+ - HOSPMI            : Hospitalized with MI Occurred / Did Not Occur
+ - MI_FCHD           : Hospitalized with MI or Fatal CHD Occurred / Did Not Occur
+ - ANYCHD            : Coronary Heart Disease (CHD)  Occurred / Did Not Occur (CHD = Angina Pectoris, MI, Coronary Insufficiency or Fatal CHD)
+ - STROKE            : Stroke Occurred / Did Not Occur (Stroke = Atherothrombotic Infarct, Cerebral Embolism, Intercerebral Hemorrhage, Subarachnoid Hemorrhage or Fatal Cerebrovascular Dx)
+ - CVD               : CVD Occurred / Did Not Occur (CVD = MI, Fatal CHD, or Stroke)
+ - HYPERTEN          : Hypertension Occurred / Did Not Occurr
+ - TIMEMIFC_OCCURRED : Time First Episode of MI_CHD (days from Period 1 Visit)
+ - TIMEMI_OCCURRED   : Time First Episode of MI (days from Period 1 Visit)
+ - TIMECHD_OCCURRED  : Time First Episode of CHD (days from Period 1 Visit)
+ - TIMESTRK_OCCURRED : Time First Episode of STROKE (days from Period 1 Visit)
+ - TIMECVD_OCCURRED  : Time First Episode of CVD (days from Period 1 Visit)
+ - TIMEDEATH_OCCURRED: Time Episode of Death (days from Period 1 Visit) of any cause
+ - TIMEHYP_OCCURRED  : Time First Episode of HYPERTEN (days from Period 1 Visit)
+ - TIMEAP_OCCURRED   : Time First Episode of ANGINA (days from Period 1 Visit)
+
+### Period 2 Visit
+ 
+ - P2_TOTCHOL        : Serum Total Cholesterol (mg/dl)
+ - P2_AGE            : Age (years)
+ - P2_SYSBP          : Mean Systolic of Last 2 Measurements (mmHg)
+ - P2_DIABP          : Mean Diastolic of Last 2 Measurements (mmHg)
+ - P2_CURSMOKE       : Current Cigarette Smoker
+ - P2_CIGPDAY        : # of Cigarettes per Day
+ - P2_BMI            : BMI (kg/m2)
+ - P2_DIABETES       : Diabetic
+ - P2_BPMEDS         : On Blood Pressure Meds
+ - P2_HEARTRTE       : Heart Rate (beats/min)
+ - P2_GLUCOSE        : Random serum glucose (mg/dl)
+ - P2_PREVCHD        : Coronary Heart Disease Present / Not Present
+ - P2_PREVAP         : Angina Present / Not Present
+ - P2_PREVMI         : Myocardial Infarction Hx Present / Not Present
+ - P2_PREVSTRK       : Stroke Hx Present / Not Present
+ - P2_PREVHYP        : Hypertension Present / Not Present
+ - P2_TIME           : Days since Period 1 Visit
+
+### Period 3 Visit
+ 
+ - P3_TOTCHOL        : Serum Total Cholesterol (mg/dl)
+ - P3_AGE            : Age (years)
+ - P3_SYSBP          : Mean Systolic of Last 2 Measurements (mmHg)
+ - P3_DIABP          : Mean Diastolic of Last 2 Measurements (mmHg)
+ - P3_CURSMOKE       : Current Smoker
+ - P3_CIGPDAY        : # of Cigarettes per Day
+ - P3_BMI            : BMI (kg/m2)
+ - P3_DIABETES       : Diabetic
+ - P3_BPMEDS         : On Blood Pressure Meds 
+ - P3_HEARTRTE       : Heart Rate (beats/min)
+ - P3_GLUCOSE        : Random serum glucose (mg/dl)
+ - P3_PREVCHD        : Coronary Heart Disease Present / Not Present
+ - P3_PREVAP         : Angina Present / Not Present
+ - P3_PREVMI         : Myocardial Infarction Hx Present / Not Present
+ - P3_PREVSTRK       : Stroke Hx Present / Not Present
+ - P3_PREVHYP        : Hypertension Present / Not Present
+ - P3_TIME           : Days since Period 1 Visit
+ - P3_HDLC           : High Density Lipoprotein Cholesterol (mg/dl)
+ - P3_LDLC           : Low Density Lipoprotein Cholesterol (mg/dl)
+
+
+
+# Variable NA 
+## NA Values in Columns
+From the innner join data frame, we removed columns where we created NAs (data columns of events when the event did not exist) and counted the missing values.    
+
+The most common missing value was glucose followed by if the patient was on BP Meds 
+```{r is na, echo=TRUE, eval=TRUE}
+FRAMINGHAM.MISSING <- sapply(FRAMINGHAM.CLEAN.ALL3[-c(28:35)], function(x) sum(is.na(x)))
+
+print(FRAMINGHAM.MISSING)
+```
+
+A quick graph to see the frequency of missing values.   
+```{r is na graph, echo=TRUE, eval=TRUE}
+barplot(FRAMINGHAM.MISSING)
+```
+
+
+
+
+# Modeling
+
+## Lasso
+### Creating a Datafram for Lasso
+```{r model prep, echo=TRUE, eval=TRUE}
+LassoData <- FRAMINGHAM.CLEAN.ALL3[, c("educ", "DIABETES", "SEX", "CURSMOKE", "BPMEDS", "PREVCHD", "PREVAP", "PREVMI", "PREVSTRK", "PREVHYP", "TOTCHOL", "AGE", "SYSBP", "DIABP", "CIGPDAY", "BMI", "HEARTRTE", "GLUCOSE", "ANYCHD")]
+lassoData <- na.omit(LassoData)
+
+
+```
+
+
+### Exploring Variables for the Lasso Model
+#### Bar Plots for Factor Variables Looking Based on ANYCHD Occuring
+```{r bar plots, echo=TRUE, eval=TRUE}
+
+#EDU
+Educ_table <-table(lassoData$ANYCHD,lassoData$educ)
+
+educ_bar <- barplot(Educ_table,
+        xlab = "Education", ylab = "Frequency",
+        col = c("darkgrey", "darkblue"),
+        legend.text = rownames(Educ_table),
+        beside = TRUE)
+
+print(educ_bar)
+
+#Diabetes
+Diab_table <-table(lassoData$ANYCHD,lassoData$DIABETES)
+
+DIAB_bar <- barplot(Diab_table,
+        xlab = "Diabetes", ylab = "Frequency",
+        col = c("darkgrey", "darkblue"),
+        legend.text = rownames(Diab_table),
+        beside = TRUE)
+
+print(DIAB_bar)
+
+
+#Sex
+SEX_table <-table(lassoData$ANYCHD,lassoData$SEX)
+
+sex_bar <- barplot(SEX_table,
+        xlab = "Sex", ylab = "Frequency",
+        col = c("darkgrey", "darkblue"),
+        legend.text = rownames(SEX_table),
+        beside = TRUE)
+
+print(sex_bar)
+
+
+#BPMEDS
+BPMEDS_table <-table(lassoData$ANYCHD,lassoData$BPMEDS)
+
+BPMEDS_bar <- barplot(BPMEDS_table,
+        xlab = "BP Meds", ylab = "Frequency",
+        col = c("darkgrey", "darkblue"),
+        legend.text = rownames(BPMEDS_table),
+        beside = TRUE)
+
+print(BPMEDS_bar)
+
+#CURSMOKE
+SMOKE_table <-table(lassoData$ANYCHD,lassoData$CURSMOKE)
+
+smoke_bar <- barplot(SMOKE_table,
+        xlab = "Current Smoker", ylab = "Frequency",
+        col = c("darkgrey", "darkblue"),
+        legend.text = rownames(SMOKE_table),
+        beside = TRUE)
+
+print(smoke_bar)
+
+```
+
+
+
+#### Box Plots Numeric Variables Looking Based on ANYCHD Occuring
+
+```{r box plots, echo=TRUE, eval=TRUE}
+library(ggplot2)
+
+#Looking at period 1 variables 
+
+#tot chol
+chol_chart <- ggplot(lassoData, aes(x = ANYCHD , y = TOTCHOL, fill=ANYCHD))
+chol_chart <- chol_chart  + geom_boxplot()
+# add a "+" at the mean
+chol_chart  <- chol_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+chol_chart  <- chol_chart + labs(title = "Total Cholesterol")
+print(chol_chart)
+
+#Age
+age_chart <- ggplot(lassoData, aes(x = ANYCHD , y = AGE, fill=ANYCHD))
+age_chart <- age_chart  + geom_boxplot()
+# add a "+" at the mean
+age_chart  <- age_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+age_chart  <- age_chart + labs(title = "Age")
+print(age_chart)
+
+#SysBP
+sysbp_chart <- ggplot(lassoData, aes(x = ANYCHD , y = SYSBP, fill=ANYCHD))
+sysbp_chart <- sysbp_chart  + geom_boxplot()
+# add a "+" at the mean
+sysbp_chart  <- sysbp_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+sysbp_chart  <- sysbp_chart + labs(title = "Systolic BP")
+print(sysbp_chart)
+
+#DiaBP
+diabp_chart <- ggplot(lassoData, aes(x = ANYCHD , y = DIABP, fill=ANYCHD))
+diabp_chart <- diabp_chart  + geom_boxplot()
+# add a "+" at the mean
+diabp_chart  <- diabp_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+diabp_chart  <- diabp_chart + labs(title = "Diastolic BP")
+print(diabp_chart)
+
+#CIGPDAY
+cig_chart <- ggplot(lassoData, aes(x = ANYCHD , y = CIGPDAY, fill=ANYCHD))
+cig_chart <- cig_chart  + geom_boxplot()
+# add a "+" at the mean
+cig_chart  <- cig_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+cig_chart  <- cig_chart + labs(title = "Cigs Per Day")
+print(cig_chart)
+
+#BMI
+bmi_chart <- ggplot(lassoData, aes(x = ANYCHD , y = BMI, fill=ANYCHD))
+bmi_chart <- bmi_chart  + geom_boxplot()
+# add a "+" at the mean
+bmi_chart  <- bmi_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+bmi_chart  <- bmi_chart + labs(title = "BMI")
+print(bmi_chart)
+
+#HEARTRTE
+HR_chart <- ggplot(lassoData, aes(x = ANYCHD , y = HEARTRTE, fill=ANYCHD))
+HR_chart <- HR_chart  + geom_boxplot()
+# add a "+" at the mean
+HR_chart  <- HR_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+HR_chart  <- HR_chart + labs(title = "Heart Rate")
+print(HR_chart)
+
+#Glucose
+glc_chart <- ggplot(lassoData, aes(x = ANYCHD , y = GLUCOSE, fill=ANYCHD))
+glc_chart <- glc_chart  + geom_boxplot()
+# add a "+" at the mean
+glc_chart  <- glc_chart  + stat_summary(fun.y = mean, geom = "point", shape = 3, size = 2)
+
+glc_chart  <- glc_chart + labs(title = "Glucose")
+print(glc_chart)
+
+education <- ggplot(lassoData, aes(educ,counts))
+
+```
+
+
+### The Model 
+```{r lasso model, echo=TRUE, eval=TRUE}
+
+library(glmnet)
+
+
+xfactors <- data.matrix(lassoData[, c("educ", "DIABETES", "SEX", "CURSMOKE", "BPMEDS", "PREVCHD", "PREVAP", "PREVMI", "PREVSTRK", "PREVHYP", "TOTCHOL", "AGE", "SYSBP", "DIABP", "CIGPDAY", "BMI", "HEARTRTE", "GLUCOSE")])
+
+yfactor <- lassoData$ANYCHD
+
+lambdas_to_try <- 10^seq(-3, 5, length.out = 100)
+glmmod <- glmnet(xfactors, yfactor, alpha=1, lambda = lambdas_to_try, family="binomial")
+
+glmmod_cv <- cv.glmnet(xfactors, yfactor, alpha=1, lambda = lambdas_to_try, family="binomial")
+
+best_lambda <- glmmod_cv$lambda.min
+best_lambda
+plot(glmmod_cv) 
+#x11(); plot(glmmod_cv) 
+coef(glmmod_cv, c(glmmod_cv$lambda.min,
+                glmmod_cv$lambda.1se))
+plot(glmmod, xvar= 'lambda', label=T)
+
+#y_predicted_lasso <- predict(glmmod, s=best_lambda, newx=xtest)
+
+##SSE, SST
+#sst <-sum
+
+```
+## Logistic regression
+For binary logistic regression, its target varibles are binary, which means it has to be 0 or 1. In the dataset, the risk factors which are 0 ro 1 are SEX, BPMED, CURSMOKE, DIABETES, PREVAP, PRECHD, PREVMI, PREVHYP. We use this eight factors to show their correlation with CHD. 
+```{r log model, echo=TRUE, eval=TRUE}
+
+library(DAAG)
+library(ggplot2)
+library(cowplot)
+
+
+BiANYCHD.full <- glm(formula = ANYCHD ~ SEX + BPMEDS + CURSMOKE + DIABETES + PREVAP + PREVCHD + PREVMI + PREVHYP , family="binomial",data = FRAMINGHAM.CLEAN.ALL3)
+summary(BiANYCHD.full)
+BiANYCHD.reduced <- glm(formula = ANYCHD ~ SEX + BPMEDS + DIABETES + PREVHYP , family = "binomial", data = FRAMINGHAM.CLEAN.ALL3)
+summary(BiANYCHD.reduced)
+
+predicted.data0 <- data.frame(probability.of.ANYCHD0=BiANYCHD.full$fitted.values,ANYCHD=FRAMINGHAM.CLEAN.ALL3$ANYCHD[0:3166])
+predicted.data0 <- predicted.data0[order(predicted.data0$probability.of.ANYCHD0, decreasing = FALSE),]
+predicted.data0$rank <- 1:nrow(predicted.data0)
+ggplot(data = predicted.data0,aes(x = rank,y =probability.of.ANYCHD0 ))+geom_point(aes(color=ANYCHD),alpha=1,shape=1,stroke=2,size = 0.1)+xlab("BI Index")+ylab("ANYCHD")
+
+LRANYCHD.full<-glm(formula = ANYCHD~TOTCHOL+AGE+SYSBP+DIABP+CIGPDAY+BMI+HEARTRTE+GLUCOSE+educ+PREVSTRK,family="binomial",data = FRAMINGHAM.CLEAN.ALL3)
+LRANYCHD.reduced <- glm(formula = ANYCHD~TOTCHOL+AGE+SYSBP+CIGPDAY+BMI+HEARTRTE+GLUCOSE,family="binomial",data = FRAMINGHAM.CLEAN.ALL3)
+#anova(LRANYCHD.reduced,LRANYCHD.full,test="Chisq")
+
+predicted.data <- data.frame(probability.of.ANYCHD=LRANYCHD.full$fitted.values,ANYCHD=FRAMINGHAM.CLEAN.ALL3$ANYCHD[0:2801])
+predicted.data <- predicted.data[order(predicted.data$probability.of.ANYCHD, decreasing = FALSE),]
+predicted.data$rank <- 1:nrow(predicted.data)
+ggplot(data = predicted.data,aes(x = rank,y =probability.of.ANYCHD ))+geom_point(aes(color=ANYCHD),alpha=1,shape=1,stroke=2,size = 0.1)+xlab("Index")+ylab("ANYCHD")
+summary(LRANYCHD.full)
+summary(LRANYCHD.reduced)
+
+```
+## Logistic Regression Results
+In binary logistic regression model,we analyzed the correlation between risk factors and CHD. It shows SEXWomen, DIABETESDiabetes History,PREVHYPHTN History have strong correlation with CHD, and BPMEDS has less correlation with CHD. Also, Sexwomen has the smallest P-value. 
+We are going to retest those high risk factors to see if they are dummy variables and to show their correlation.Based on the table, it shows there is no dummy variables and except BPMEDS has less correlation, other three show strong correlation with CHD,
+Also, except the binary varibles, we also test the binomial logistic regression with all other factors which are not 0 or 1. The factors includes TOTCHOL,AGE, SYSBP,DIABP, CIGPDAY, BMI, HEARTRTE, GLUCOSE, educ, PREVSTRK. The TOTCHOL,AGE,CIGPDAY,BMI show stronger relation with CHD, and SYSBP,HEARTRTE,GLUCOSE show less relation. When we do restest and to see if dummy varibles exist, it shgws all factors do have influence on CHD. Age is the risk factor which has the smallest p-value, showing the strongest correlation with CHD. 
+
+
+
+
