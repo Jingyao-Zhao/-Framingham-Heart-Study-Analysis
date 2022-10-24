@@ -1,10 +1,10 @@
 # -Framingham-Heart-Study-Analysis
 
-#Intruduction
+# Intruduction
 
 The Framingham Study is a “population-based, observational cohort study” started in 1948 by a federal public health agency. The goal has been to investigate cardiovascular disease. This data is a small subset of the larger study. The full data is complex and includes genetic and imaging results as well as the demographics and clinical data included in the subset. The full data has been instrumental in furthering understanding of cardiac conditions and outcomes.
 
-#Data Exploration and Munging
+# Data Exploration and Munging
 
 Our original dataframe had 11,627 records with 39 variables.First we had to set up the data in our R Studio.
 Looking at the data initially, it appears that patients were followed for at least 3 periods, so many of the 11,000 + records were duplicated, and triplicated. Outcome data for each line was final outcome data and this was repeated for each period the patient was present so it was not unique for each visit.
